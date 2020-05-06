@@ -1,4 +1,4 @@
-# DIMA + DL-Join ( Distributed Streaming Similarity Join ) 
+# Semi-stream + machine learing 
 ## how to compile spark project
 ```
 > sbt clean assembly
