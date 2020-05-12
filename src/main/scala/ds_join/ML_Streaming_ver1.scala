@@ -267,7 +267,7 @@ object ML_Streaming_ver1{
       var conf = new SparkConf().setAppName("ML_Streaming_ver1")
       var sc = new SparkContext(conf)
       var sqlContext = new SQLContext(sc)
-      val ssc = new StreamingContext(sc, Milliseconds(6000)) // 700
+      val ssc = new StreamingContext(sc, Milliseconds(3000)) // 700
       val stream = ssc.socketTextStream("192.168.0.15", 9999)
       val stream2 = ssc.socketTextStream("192.168.0.15", 9998)
       val stream3 = ssc.socketTextStream("192.168.0.15", 9997)
