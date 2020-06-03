@@ -61,7 +61,7 @@ object ML_test2{
       val conf = new SparkConf().setAppName("ML_test2")
       val sc = new SparkContext(conf)
       val sqlContext = new SQLContext(sc)
-      val ssc = new StreamingContext(sc, Milliseconds(3000))
+      val ssc = new StreamingContext(sc, Milliseconds(500))
       val stream = ssc.socketTextStream("192.168.0.15", 9999)
     
       var AvgStream:Array[Long] = Array()
@@ -71,17 +71,24 @@ object ML_test2{
       var streamingIteration = 1
       var latencyIteration = 1
 
-      val test_file = sqlContext.read.json("/home/user/Desktop/hongji/ref/test.json")
-      var test_rows = test_file.select("reviewText", "overall").rdd
-      var test_int_rows = test_rows.map(x => (x(1).toString.toDouble, Vectors.dense(x(0).toString.hashCode.toDouble)))//.toDF("overall", "reviewText")
+      var sum_MSE:Double = 0
+
+      //val test_file = sqlContext.read.json("/home/user/Desktop/hongji/ref/test.json")
+      //var test_rows = test_file.select("reviewText", "overall").rdd
+      //var test_int_rows = test_rows.map(x => (x(1).toString.toDouble, Vectors.dense(x(0).toString.hashCode.toDouble)))//.toDF("overall", "reviewText")
+      
+      val test_file = sqlContext.read.json("/home/user/Desktop/hongji/ref/skhynix_test200.json")
+      var test_rows = test_file.select("price", "sell", "buying", "trading", "changes", "predict").rdd
+      var test_int_rows = test_rows.map(x => (x(5).toString.toDouble/100, 
+        Vectors.dense(x(0).toString.toDouble/100,x(1).toString.toDouble/100,x(2).toString.toDouble/100, x(3).toString.toDouble/100, x(4).toString.replaceAll(",","").toDouble/10, x(0).toString.toDouble/100 - 10.0,x(1).toString.toDouble/100 - 10.0,x(2).toString.toDouble/100 - 10.0, x(3).toString.toDouble/100 - 10.0, x(4).toString.replaceAll(",","").toDouble/10 - 1.0)))//.toDF("overall", "reviewText")
           
       println("create model")
       var model = new StreamingLinearRegressionWithSGD_dsl()
-      .setStepSize(0.1)
-      .setNumIterations(50)
+      .setStepSize(0.00000001)
+      .setNumIterations(1000)
       .setRegParam(0.0)
       .setMiniBatchFraction(1.0)
-      .setInitialWeights(Vectors.zeros(1))
+      .setInitialWeights(Vectors.zeros(10))
 
       println("created model")
 
@@ -95,9 +102,12 @@ object ML_test2{
 
 
           var Start = System.currentTimeMillis
+          //var input_file = sqlContext.read.json(rdd)
+          //var rows = input_file.select("reviewText", "overall").rdd
           var input_file = sqlContext.read.json(rdd)
-          var rows = input_file.select("reviewText", "overall").rdd
-          var int_rows = rows.map(x => (LabeledPoint(x(1).toString.toDouble, Vectors.dense(x(0).toString.hashCode.toDouble))))//.toDF("overall", "reviewText")
+          var rows = input_file.select("price", "sell", "buying", "trading", "changes", "predict").rdd
+          var int_rows = rows.map(x => (LabeledPoint(x(5).toString.toDouble/100, 
+            Vectors.dense(x(0).toString.toDouble/100,x(1).toString.toDouble/100,x(2).toString.toDouble/100, x(3).toString.toDouble/100, x(4).toString.replaceAll(",","").toDouble/10, x(0).toString.toDouble/100 - 10.0,x(1).toString.toDouble/100 - 10.0,x(2).toString.toDouble/100 - 10.0, x(3).toString.toDouble/100 - 10.0, x(4).toString.replaceAll(",","").toDouble/10 - 1.0))))//.toDF("overall", "reviewText")
           var query_count = int_rows.cache().count()
 
           println("data|qc|query_count : " + query_count)
@@ -110,8 +120,12 @@ object ML_test2{
 
           /* model test */
           tStart = System.currentTimeMillis
-          var predic_count = model.predictOnValues_dsl(test_int_rows).count()//llect().foreach(println)
-          println("data|pc|predictOnValues_dsl : " + predic_count)
+          var predic_count = model.predictOnValues_dsl(test_int_rows).cache()//.collect().foreach(println)//.print()//llect().foreach(println)
+          val MSE = model.predictOnValues_dsl(test_int_rows).map{case(x,y) => math.pow((x - y),2)}.mean()
+          
+
+          println("traing Mean Squared Error "+MSE)
+         // println("data|pc|predictOnValues_dsl : " + predic_count.count())
           tEnd = System.currentTimeMillis
 
           println("time|prediction: "+(tEnd - tStart)+" ms")
@@ -124,6 +138,11 @@ object ML_test2{
 
           println("time|latency: "+(End - Start)+" ms")
           streamingIteration = streamingIteration + 1
+
+          if(( tEnd - start_total) > 600000 ){
+            sum_MSE = sum_MSE + MSE
+          }
+
           if(( tEnd - start_total) > 1800000 ){
             ssc.stop()
           }
@@ -135,7 +154,9 @@ object ML_test2{
       ssc.awaitTermination()
       var end_total = System.currentTimeMillis
       var total_time = end_total - start_total
+      println("\n\n=============Result================")
       println("time|total_time: "+(total_time)+" ms")
+      println("MSE|total_mse: "+(sum_MSE/streamingIteration)+" ms")
 
 
 
